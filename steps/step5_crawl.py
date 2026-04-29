@@ -12,9 +12,10 @@ import runners.spider_runner as spider_runner
 import runners.crawl4ai_runner as crawl4ai_runner
 import runners.apify_runner as apify_runner
 from utils import timed_call, save_result, excerpt, credits_used, print_step_header, print_competitor_header, print_comparison_table
+from config import PRIMARY_DOCS_URL
 
 STEP = 5
-TARGET_URL = "https://spider.cloud/docs"
+TARGET_URL = PRIMARY_DOCS_URL
 CRAWL_LIMIT = 20
 
 

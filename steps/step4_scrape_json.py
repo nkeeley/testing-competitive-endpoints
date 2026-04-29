@@ -14,9 +14,10 @@ import runners.firecrawl_runner as fc_runner
 import runners.scrapegraphai_runner as sgai_runner
 from utils import timed_call, save_result, excerpt, credits_used, print_step_header, print_competitor_header, print_comparison_table
 from schemas import PRICING_SCHEMA
+from config import PRIMARY_PRICING_URL
 
 STEP = 4
-TARGET_URL = "https://spider.cloud/pricing"
+TARGET_URL = PRIMARY_PRICING_URL
 SGAI_PROMPT = (
     "Extract all pricing plans. For each plan return: plan_name, price_monthly, "
     "credits_or_pages included, rate_limit, and key_features as a list."

@@ -16,16 +16,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import runners.firecrawl_runner as fc_runner
 from utils import timed_call, save_result, excerpt, print_step_header, print_competitor_header, print_comparison_table
 from schemas import PARSE_SCHEMA
+from config import PDF_CANDIDATES
 
 STEP = 8
-
-# PDFs to try downloading (in order — first success wins)
-PDF_CANDIDATES = [
-    ("Apify whitepaper", "https://apify.com/pdf/apify-whitepaper.pdf"),
-    ("Spider docs PDF", "https://spider.cloud/spider-documentation.pdf"),
-    # Fallback: a small public PDF that's reliably available
-    ("W3C sample PDF", "https://www.w3.org/WAI/WCAG21/Techniques/pdf/pdf-sample.pdf"),
-]
 
 PDF_DOWNLOAD_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

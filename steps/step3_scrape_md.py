@@ -13,9 +13,10 @@ import runners.crawl4ai_runner as crawl4ai_runner
 import runners.scrapegraphai_runner as sgai_runner
 import runners.apify_runner as apify_runner
 from utils import timed_call, save_result, excerpt, credits_used, print_step_header, print_competitor_header, print_comparison_table
+from config import PRIMARY_PRICING_URL
 
 STEP = 3
-TARGET_URL = "https://spider.cloud/pricing"
+TARGET_URL = PRIMARY_PRICING_URL
 
 
 def extract_markdown(result):

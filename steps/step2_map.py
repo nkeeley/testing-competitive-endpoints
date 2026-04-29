@@ -8,15 +8,10 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import runners.firecrawl_runner as fc_runner
 from utils import timed_call, save_result, excerpt, print_step_header, print_competitor_header, print_comparison_table
+from config import ALL_BASE_URLS, PRIMARY_BASE_URL
 
 STEP = 2
-TARGET_URLS = [
-    "https://spider.cloud",
-    "https://crawl4ai.com",
-    "https://scrapegraphai.com",
-    "https://apify.com",
-    "https://exa.ai",
-]
+TARGET_URLS = ALL_BASE_URLS
 
 
 def main():
@@ -57,8 +52,8 @@ def main():
             "ScrapeGraphAI": "No", "Apify": "No", "Exa": "No",
         }),
         ("Output quality (1-5)", {"Firecrawl": "___", **{c: "N/A" for c in competitors[1:]}}),
-        ("URLs returned (spider.cloud)", {
-            "Firecrawl": str(len(all_out.get("https://spider.cloud", {}).get("result", []) or [])) + " links",
+        (f"URLs returned ({PRIMARY_BASE_URL})", {
+            "Firecrawl": str(len(all_out.get(PRIMARY_BASE_URL, {}).get("result", []) or [])) + " links",
             **{c: "N/A" for c in competitors[1:]},
         }),
         ("Cost", {"Firecrawl": "per credit", **{c: "N/A" for c in competitors[1:]}}),

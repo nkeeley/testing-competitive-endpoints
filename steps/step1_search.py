@@ -11,15 +11,11 @@ import runners.firecrawl_runner as fc_runner
 import runners.spider_runner as spider_runner
 import runners.exa_runner as exa_runner
 from utils import timed_call, save_result, excerpt, print_step_header, print_competitor_header, print_comparison_table
+from config import COMPETITORS
 
 STEP = 1
-QUERIES = [
-    "Spider cloud pricing page",
-    "Crawl4AI pricing tiers",
-    "ScrapeGraphAI pricing plans",
-    "Apify pricing page",
-    "Exa AI pricing",
-]
+# One query per competitor — derived from the central COMPETITORS list
+QUERIES = [f"{c['name']} pricing page" for c in COMPETITORS.values()]
 
 
 def run_queries(runner_fn, queries, sleep_s=2, **kwargs):

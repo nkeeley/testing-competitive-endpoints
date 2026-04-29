@@ -8,16 +8,18 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import runners.firecrawl_runner as fc_runner
 from utils import timed_call, save_result, excerpt, print_step_header, print_competitor_header, print_comparison_table
+from config import PRIMARY_DISPLAY_NAME, PRIMARY_BASE_URL
 
 STEP = 6
 PROMPT = (
-    "Find the complete pricing tiers, per-endpoint costs, and rate limits for Spider.cloud. "
-    "Include plan names, monthly prices, credits or pages included, and any overage costs."
+    f"Find the complete pricing tiers, per-endpoint costs, and rate limits for {PRIMARY_DISPLAY_NAME} "
+    f"({PRIMARY_BASE_URL}). Include plan names, monthly prices, credits or pages included, "
+    f"and any overage costs."
 )
 
 
 def main():
-    print_step_header(STEP, "Agent", "Spider.cloud pricing research (autonomous)")
+    print_step_header(STEP, "Agent", f"{PRIMARY_DISPLAY_NAME} pricing research (autonomous)")
 
     print_competitor_header("Firecrawl")
     print(f"  Prompt: {PROMPT}")
