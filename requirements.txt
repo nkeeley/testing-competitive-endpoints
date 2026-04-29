@@ -1,0 +1,8 @@
+firecrawl-py
+exa-py
+apify-client
+spider-client
+crawl4ai
+scrapegraphai
+requests
+python-dotenv

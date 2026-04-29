@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Test suite raw results (can be large)
+results/raw/*.json
+results/raw/*.pdf
