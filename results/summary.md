@@ -18,12 +18,7 @@
 - Cost data only available from Firecrawl response metadata; competitors mostly don't report cost in response.
 - Latency is wall-clock, measured by a `timed_call()` wrapper around each SDK call.
 
-**Quality rubric (1-5):**
-- 5 = every field present, accurate, production-ready
-- 4 = minor imperfections, usable as-is
-- 3 = directionally right but needs cleanup
-- 2 = mostly wrong or incomplete
-- 1 = useless, empty, or wrong content served as success
+**Quality assessment approach:** Numeric 1-5 scoring was dropped in favor of qualitative per-step commentary. Tester's observations are captured in each step's "Reflections" and "Verbatim observations" subsections rather than in cell scores. This avoids false precision and produces richer input for synthesis.
 
 **Failure behavior:**
 - Loud = clear error, appropriate status, no credit charged
@@ -39,21 +34,43 @@
 
 | Dimension | Firecrawl | Spider | Crawl4AI | ScrapeGraphAI | Apify | Exa | Brave |
 |---|---|---|---|---|---|---|---|
-| Endpoint used | /search | spider.search() | N/A | /searchscraper (verify) | N/A (partial via actors) | exa.search_and_contents() | /web/search |
-| Has equivalent? | Yes | Yes | No | Yes (per scrapegraphai.com/dashboard/search) | Partial | Yes | Yes |
-| Output quality (1-5) | | | N/A | | N/A | | |
-| Latency (first query) | | | N/A | | N/A | | |
+| Endpoint used | /search | spider.search() | N/A | /search (v2 API) | N/A (partial via actors) | exa.search_and_contents() | /web/search |
+| Has equivalent? | Yes | Yes | No | Yes | Partial | Yes | Yes |
 | Cost | per credit | not reported | N/A | not reported | N/A | not reported | per request |
-| Failure behavior | | | N/A | | N/A | | |
-| Notes | | | | | | | |
+| Failure behavior | N/A — succeeded | **Silent** (401 on own `spider.cloud/pricing` despite succeeding on others) | N/A | **Loud → resolved** (403 throughout on run 1 due to wrong URL; clean on run 2 after docs check) | N/A | N/A — succeeded | N/A — call succeeded but content quality wonky |
+| Notes | Smart edge-case handling on Crawl4AI's missing pricing page — pulled external pricing references | Quiet quality bug on its own domain | **Run-2 results nearly identical to Firecrawl's** (e.g. same Capterra link surfaced for Crawl4AI). Strong "shared upstream index" hypothesis | | | Brave NL understanding mutated some queries (e.g. "Spider pricing page" surfacing arachnid results). Not a config issue per docs check |
 
-### Reflections
-- **Updated capability map applied to script:** `step1_search.py` now tests Firecrawl, Spider, Exa, ScrapeGraphAI, and Brave. Crawl4AI and Apify remain N/A.
-- **Brave is search-only in this test suite** per tester direction. Not in any other step's tables or scripts.
-- **VERIFY ON FIRST RUN:** SGAI's `/searchscraper` endpoint is a best-guess based on their `/smartscraper` pattern. If it 404s, adjust in `runners/scrapegraphai_runner.py`.
+### Reflections (after first run)
+
+**Firecrawl — succeeded with smart edge-case handling:**
+- Returned URL + snippet + metadata combo across all 5 queries.
+- For Crawl4AI specifically (no dedicated pricing page since it's open-source), Firecrawl correctly inferred the edge case and pulled pricing-adjacent references from external sources. **Defensible behavior, not a hallucination** — a literal pricing-page search would have failed; instead the search resolved the user's *intent* despite the missing canonical page. Worth flagging as a quality-of-results win.
+
+**Spider — interesting paradox: 401 on its own pricing page, succeeded on others:**
+- Pulled correct results for the other competitors (including Crawl4AI's non-pricing description URL).
+- 401 specifically on `spider.cloud/pricing` from their own search index.
+- **Two possible interpretations:**
+  1. Spider's search index doesn't include their own pricing page (would mean their own crawl missed it — odd).
+  2. Spider's search returned a URL that requires auth to render via their `return_format: markdown` post-fetch.
+- Either way, this is a quiet quality issue: API returned 401 from a search call, not a clean "no result" response. **Failure mode: Silent.** Worth noting as a Firecrawl differentiator if Firecrawl handles this case more gracefully.
+
+**ScrapeGraphAI — 403 on every query (run 1) → resolved after docs check (run 2):**
+- Run 1: 403s across the board. Our runner had the wrong base URL (`api.scrapegraphai.com/v1/searchscraper` vs. actual `v2-api.scrapegraphai.com/api/search`) and wrong field names (`user_prompt`/`num_results` vs. `query`/`numResults`).
+- Pre-fix verification: WebFetched docs at `docs.scrapegraphai.com/services/search` to confirm exact endpoint, auth header, and request body shape.
+- Run 2 (after fix): clean execution, **results nearly identical to Firecrawl's** (e.g. same Capterra link surfaced for Crawl4AI pricing query). Tester verbatim: *"results look a ton (almost identical) to Firecrawl's (e.g. same Capterra link for crawl4ai pricing page). Suggests they are using same index?"*
+- **Hypothesis worth noting for the interview:** Firecrawl and SGAI may share an upstream search index (Bing, Google CSE, Serper, or similar). If true, search-result *quality* is commoditized between these two — differentiation lives in everything around the call (chained extraction, structured outputs, agent integration). Worth confirming with Nick C.
+
+**Brave — succeeded but content quality degraded (config not the cause):**
+- Output was sparser than the other APIs (no snippets/markdown content, just URL + flag-style metadata) — addressed by flattening the runner's response to extract `web.results` directly.
+- Tester also observed query mutation — e.g. results about "what is the price of jumping spider?" for the literal query "Spider pricing page". WebFetched Brave's quickstart at `api-dashboard.search.brave.com/documentation/quickstart` to verify our config. **Auth header, query param, URL all match docs — this is Brave's NL understanding, not a config bug.** "Spider" is genuinely ambiguous to a search index that knows about both spider.cloud and arachnids; "jumping spider" is a common SEO-anchored phrase that Brave's query understanding pulled in.
+- **Comparison-grade observation:** Firecrawl's search resolved the *intent* on the Crawl4AI edge case (no pricing page → external pricing-adjacent references) without explicit instruction. Brave's NL understanding moved in the opposite direction on similar ambiguity. Same underlying technique (NL query understanding), opposite effect on intent-matching. Worth surfacing in the interview as a concrete quality differential.
 
 ### Verbatim observations
-*(direct quotes / reactions, captured as you share them)*
+- *"Firecrawl succeeded but had to (correctly) try to pull pricing for crawl4ai from outside source since it doesnt have a pricing page (it's open source so this is an edge case). Thought the level of description and urls all looked good."*
+- *"Spider interestingly failed at pulling its own pricing page (401 error) despite correctly pulling otheres (to include crawl4ai non pricing description url)."*
+- *"ScrapegraphAI ran into 403 errors for every page."* (run 1, pre-docs-check)
+- *"All APIs had a combination of URL, snippets, and metadata except for Brave. It had a much sparser output with flag data that I didn't care about. The queries were somehow perverted from the hardcoded inputs (e.g. what is the price of jumping spider?). Has high potential but didnt work."*
+- *"OK brave still a little wonky with interpretation, but SGAI errors resolve and its results look a ton (almost identical) to firecrawl's (e.g. same capterra link for crawl4ai pricing page). Suggests they are using same index?"* (run 2, post-docs-check)
 
 ---
 
@@ -66,7 +83,6 @@
 |---|---|---|---|---|---|---|
 | Endpoint used | /map | **links** | **URL seeding** | N/A | N/A | N/A |
 | Has equivalent? | Yes | **Yes** | **Yes** | No | No | No |
-| Output quality (1-5) | | | | N/A | N/A | N/A |
 | URLs returned | | | | N/A | N/A | N/A |
 | Cost | per credit | not reported | free | N/A | N/A | N/A |
 | Failure behavior | | | | N/A | N/A | N/A |
@@ -90,7 +106,6 @@
 |---|---|---|---|---|---|---|
 | Endpoint used | /scrape | scrape_url() | AsyncWebCrawler | smartscraper | website-content-crawler | N/A |
 | Has equivalent? | Yes | Yes | Yes | Yes (schema-first) | Yes (via actor) | No |
-| Output quality (1-5) | | | | | | N/A |
 | Latency | | | | | | N/A |
 | Cost | credit(s) | not reported | free | not reported | not reported | N/A |
 | Cost matched docs? | | N/A | N/A | N/A | N/A | N/A |
@@ -114,7 +129,6 @@
 |---|---|---|---|---|---|---|
 | Endpoint used | /scrape (JSON schema) | N/A | **structured outputs (LLM extraction strategy)** | smartscraper / extract | N/A | (partial via highlights+contents) |
 | Has equivalent? | Yes (native) | No | **Yes** (LLM-based) | Yes (prompt-based) | No | Partial |
-| Output quality (1-5) | | N/A | | | N/A | N/A |
 | Latency | | N/A | | | N/A | N/A |
 | Cost | credit(s) | N/A | free + buyer's LLM tokens | not reported | N/A | N/A |
 | Schema fidelity | exact schema enforced | N/A | LLM-inferred (depends on model) | prompt-inferred | N/A | N/A |
@@ -139,7 +153,6 @@
 |---|---|---|---|---|---|---|
 | Endpoint used | /crawl | crawl_url() | AsyncWebCrawler (sequential) | **crawl** | website-content-crawler | N/A |
 | Has equivalent? | Yes | Yes | Yes (manual link-follow) | **Yes** | Yes (via actor) | No |
-| Output quality (1-5) | | | | | | N/A |
 | Latency | | | | | | N/A |
 | Pages returned | | | | | | N/A |
 | Cost | credit(s) | not reported | free | not reported | not reported | N/A |
@@ -164,7 +177,6 @@
 |---|---|---|---|---|---|---|
 | Endpoint used | /agent (spark-1-mini) | N/A | N/A | N/A | N/A | N/A |
 | Has equivalent? | Yes | No | No | No | No | No |
-| Output quality (1-5) | | N/A | N/A | N/A | N/A | N/A |
 | Latency (incl. polling) | | N/A | N/A | N/A | N/A | N/A |
 | Cost | per agent credit | N/A | N/A | N/A | N/A | N/A |
 | Failure behavior | | N/A | N/A | N/A | N/A | N/A |
@@ -188,7 +200,6 @@
 | Endpoint used | /scrape + /interact | **browser** | **browser interactions + action DSL** | N/A | N/A | N/A |
 | Has equivalent? | Yes | **Yes** | **Yes** | No | No | No |
 | Interface style | natural-language prompt | (verify in test) | **DSL — SQL-like syntax** | N/A | N/A | N/A |
-| Output quality (1-5) | | | | N/A | N/A | N/A |
 | Scrape latency | | | | N/A | N/A | N/A |
 | Interact latency | | | | N/A | N/A | N/A |
 | Toggle detected? | | | | N/A | N/A | N/A |
@@ -215,8 +226,6 @@
 | Endpoint used | /parse (multipart/form-data) | **transform** | **PDF parsing** | N/A (URL-only) | N/A (actor required) | N/A |
 | Has equivalent? | Yes | **Yes** | **Yes** (PDF-only?) | Partial (URL only) | Partial (actor required) | No |
 | PDF source | | | | N/A | N/A | N/A |
-| Markdown quality (1-5) | | | | N/A | N/A | N/A |
-| JSON schema quality (1-5) | | | | N/A | N/A | N/A |
 | Latency (markdown) | | | | N/A | N/A | N/A |
 | Latency (JSON schema) | | | | N/A | N/A | N/A |
 | Content-Type | multipart/form-data | (verify) | (verify — Python lib, no HTTP) | N/A | N/A | N/A |
@@ -375,6 +384,31 @@ After surveying Spider, Apify, Crawl4AI, and ScrapeGraphAI at the API-surface le
 | Search index with content augmentation | Exa, **Brave** | Own the index; extraction is augmentation, not the product |
 
 **ScrapeGraphAI is the only direct head-to-head rival of the six.** Apify and Crawl4AI play different games; Exa and Brave play a different game (search index, not extraction); Spider is the closest peer but bets on a different productization (more primitives, AI Studio as a wrapped subscription).
+
+### Cross-cutting observations from Step 1 (Search)
+
+**Trend 1 — Firecrawl and SGAI may share an upstream search index.** SGAI's results on the second run were *nearly identical* to Firecrawl's, including the same specific Capterra link surfaced for the Crawl4AI pricing query. If the hypothesis holds, search-result *quality* is commoditized between these two competitors and the differentiation lives entirely in:
+- How the search call composes with the rest of the API (chained scrape, structured extract, agent orchestration)
+- Pricing model and credit transparency
+- Time-to-first-success in onboarding
+
+This is the kind of finding that changes the interview frame. *"We out-search SGAI"* is hard to defend if the index is shared. *"Once you've decided to search and consume the result, our integrated primitives mean fewer round-trips and a cleaner agent loop"* is defensible. **Worth confirming with Nick C** — does Firecrawl /search use a third-party upstream (Bing, Google CSE, Serper, etc.), and if so, do we know whether SGAI uses the same one?
+
+**Trend 2 — NL query understanding cuts both ways across providers.** Same underlying technique, opposite effects on intent-matching:
+- **Firecrawl (positive):** Resolved Crawl4AI's "no pricing page" edge case by pulling external pricing-adjacent references — read the user's *intent*.
+- **Brave (negative):** Mutated "Spider pricing page" into arachnid-related results — index-side query understanding ran ahead of the user's domain intent.
+
+This is a concrete, named example for the "Where Firecrawl wins on quality" interview moment.
+
+**Trend 3 — Failure modes are doing their own competitive analysis.** Across just one step, four distinct failure shapes:
+- **Firecrawl:** N/A — graceful edge-case handling
+- **Spider:** Silent quality bug on its own pricing page (401 specifically — index issue or auth-gated render)
+- **SGAI:** Loud config error → resolved cleanly after docs check (good DX signal — accurate docs)
+- **Brave:** Silent quality issue (returned mutated results without erroring)
+
+The "loud-vs-silent" failure-mode axis from the methodology rubric is doing real work here. Silent failures are the worst class — Spider's 401 and Brave's mutation both fall in this bucket. **Worth a sentence in the synthesis: silent failures are the kind that hurt agent reliability most, and Firecrawl appears to fail loudly when it fails.** Tentative based on n=1 step; reinforce or revise as more data comes in.
+
+**Trend 4 — Documentation accuracy is a tier-distinguishing signal.** SGAI's 403 errors were resolved on the *first* docs read — their docs accurately describe their endpoint, auth header, and field names. Compare to several places in this survey where competitor doc shapes don't match what their SDK or API actually does (Spider SDK method names, Crawl4AI's URL Seeder availability, etc.). **Accurate docs is a tier-distinguishing signal in this category** — worth noting where Firecrawl stands.
 
 ### New pattern: "drift toward downstream workflow support"
 
