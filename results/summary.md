@@ -4,23 +4,41 @@
 
 ---
 
+## Test coverage status (as of 2026-04-30 morning)
+
+| Step | Primitive | Status | Competitors tested |
+|---|---|---|---|
+| 1 | Search | **Run + annotated** | Firecrawl, Spider, Exa, ScrapeGraphAI, Brave |
+| 2 | Map | **Run + annotated** | Firecrawl, Spider, Crawl4AI |
+| 3 | Scrape (Markdown) | Not run (skipped — JSON judged more useful for agentic data extraction) | — |
+| 4 | Scrape (JSON schema) | **Run + annotated** | Firecrawl, ScrapeGraphAI, Crawl4AI, Exa |
+| 5 | Crawl | Not run (time) | — |
+| 6 | Agent | Not run (Firecrawl-only primitive — no head-to-head needed) | — |
+| 7 | Interact | Not run (time) | — |
+| 8 | Parse | Not run (time) | — |
+| — | Pre-test docs/API survey | **Complete** for all 6 competitors (Spider, Crawl4AI, SGAI, Apify, Exa, Brave) | — |
+| — | JSON schema extraction landscape research | **Complete** (saved to `results/raw/competitor_json_extraction_research.json`) | — |
+
+**Tomorrow morning (2026-04-30):** Manual playground validation of Step 4 on dropdown-gated content — see `results/step4_validation_playground_test.md`. Will be folded into Step 4 reflections as a second data point when complete.
+
+---
+
 ## Context for the synthesis reader
 
 **Who:** Nick Keeley, Product Operations Engineer at Firecrawl, prepping for a mock interview with the CTO.
 
-**What:** Head-to-head test of Firecrawl's 8 primitives (search, map, scrape-md, scrape-json, crawl, agent, interact, parse) vs. five competitors: Spider, Crawl4AI, ScrapeGraphAI, Apify, Exa.
+**What:** Head-to-head test of Firecrawl's 8 primitives (search, map, scrape-md, scrape-json, crawl, agent, interact, parse) vs. five direct competitors (Spider, Crawl4AI, ScrapeGraphAI, Apify, Exa) plus one research-only addition (Brave, search-only).
 
-**How:** Each step is a Python script in `steps/stepN_*.py` that runs the same task on Firecrawl + each competitor with an equivalent primitive, prints raw output + a comparison table, and saves raw responses to `results/raw/`. Tester reviews output and assigns 1-5 quality scores manually.
+**How:** Each step is a Python script in `steps/stepN_*.py` that runs the same task on Firecrawl + each competitor with an equivalent primitive, prints raw output + a comparison table, and saves raw responses to `results/raw/`.
 
 **Methodology notes:**
 - All testing via Python SDKs (not CLI). Internal friction log shows CLI-vs-SDK gaps — if SDK is smoother than CLI, that reinforces a known pattern.
-- Quality scores are manual judgment, not automated.
 - Cost data only available from Firecrawl response metadata; competitors mostly don't report cost in response.
 - Latency is wall-clock, measured by a `timed_call()` wrapper around each SDK call.
 
-**Quality assessment approach:** Numeric 1-5 scoring was dropped in favor of qualitative per-step commentary. Tester's observations are captured in each step's "Reflections" and "Verbatim observations" subsections rather than in cell scores. This avoids false precision and produces richer input for synthesis.
+**Quality assessment approach:** Numeric 1-5 scoring was dropped early in favor of qualitative per-step commentary. Tester's observations are captured in each step's "Reflections" and "Verbatim observations" subsections rather than in cell scores. This avoids false precision and produces richer input for synthesis.
 
-**Failure behavior:**
+**Failure behavior taxonomy:**
 - Loud = clear error, appropriate status, no credit charged
 - Silent = 200 OK with wrong/partial/empty content, or credit charged on failure
 - N/A = succeeded, no failure to evaluate
@@ -120,7 +138,9 @@
 
 ## Step 3: Scrape (Markdown)
 
-**Target:** Extract pricing page as clean markdown — `https://spider.cloud/pricing`.
+**STATUS: Not run.** Skipped per tester direction in favor of Step 4 (JSON schema). Reasoning captured: *"Is MD or JSON more useful for agentic systems running data extraction? That should dictate our choice"* — JSON won because schema enforcement reduces agent error budget, lowers token cost, and reveals architectural variation between providers (server-enforced vs LLM-best-effort). Capability map for this step is still useful as reference.
+
+**Target (would be):** Extract pricing page as clean markdown — `https://spider.cloud/pricing`.
 **Competitors with this primitive:** Firecrawl, Spider, Crawl4AI, ScrapeGraphAI, Apify.
 
 | Dimension | Firecrawl | Spider | Crawl4AI | ScrapeGraphAI | Apify | Exa |
@@ -133,11 +153,9 @@
 | Failure behavior | | | | | | N/A |
 | Notes | | | | | | |
 
-### Reflections
-- **TODO when running:** Confirm Spider's scrape endpoint does NOT support change/diff tracking. Firecrawl does. If confirmed, this is a clean differentiator for monitoring/audit use cases.
-
-### Verbatim observations
-*(direct quotes / reactions, captured as you share them)*
+### Reflections (pre-test capability map only — step not run)
+- Spider's scrape endpoint does NOT support change/diff tracking per docs review (Firecrawl does — captured as a Firecrawl differentiator regardless of step running).
+- All five extraction-category competitors return markdown — this is the most commoditized output in the space.
 
 ---
 
@@ -226,7 +244,9 @@ Firecrawl was the only provider that produced consistently shaped, content-compl
 
 ## Step 5: Crawl
 
-**Target:** Crawl `https://spider.cloud/docs` with a 20-page limit, return markdown.
+**STATUS: Not run** (deferred for time). Pre-test capability map below is from docs review.
+
+**Target (would be):** Crawl `https://spider.cloud/docs` with a 20-page limit, return markdown.
 **Competitors with this primitive:** Firecrawl, Spider, Crawl4AI (manual link-follow), Apify, **ScrapeGraphAI**.
 
 | Dimension | Firecrawl | Spider | Crawl4AI | ScrapeGraphAI | Apify | Exa |
@@ -239,19 +259,18 @@ Firecrawl was the only provider that produced consistently shaped, content-compl
 | Failure behavior | | | | | | N/A |
 | Notes | | | | | | |
 
-### Reflections
-- **Updated capability assessment:** ScrapeGraphAI has a `crawl` endpoint — qualifies. Originally marked No based on the initial test scaffolding, but the survey confirmed it.
-- **SCRIPT GAP:** `step5_crawl.py` doesn't test SGAI crawl. Runner needs a `crawl` method and step needs to be updated.
-
-### Verbatim observations
-*(direct quotes / reactions, captured as you share them)*
+### Reflections (pre-test only — step not run)
+- ScrapeGraphAI has a `crawl` endpoint — qualifies for comparison even though originally marked N/A in scaffolding.
+- Crawl4AI's "crawl" implementation is manual link-follow on top of their single-page scraper (no native site crawler primitive).
 
 ---
 
 ## Step 6: Agent
 
-**Target:** Autonomous research — "Find the complete pricing tiers, per-endpoint costs, and rate limits for Spider.cloud."
-**Competitors with this primitive:** Firecrawl only.
+**STATUS: Not run.** Firecrawl-only primitive — no head-to-head comparison possible. Capability gap itself is the data point.
+
+**Target (would be):** Autonomous research — "Find the complete pricing tiers, per-endpoint costs, and rate limits for Spider.cloud."
+**Competitors with this primitive:** Firecrawl only. (Closest analogs: Crawl4AI's adaptive crawling, SGAI's `extract`, Spider's AI Studio subscription, Exa's `answer` — all narrower than autonomous research.)
 
 | Dimension | Firecrawl | Spider | Crawl4AI | ScrapeGraphAI | Apify | Exa |
 |---|---|---|---|---|---|---|
@@ -262,17 +281,16 @@ Firecrawl was the only provider that produced consistently shaped, content-compl
 | Failure behavior | | N/A | N/A | N/A | N/A | N/A |
 | Notes | | | | | | |
 
-### Reflections
-*(to be filled in as we go)*
-
-### Verbatim observations
-*(direct quotes / reactions, captured as you share them)*
+### Reflections (pre-test only — Firecrawl-only primitive)
+- **The gap itself is interview-grade.** No competitor has true autonomous research. Spider's AI Studio is the closest at the productization level but is wrapped in a subscription, not exposed as a primitive. Worth surfacing as Firecrawl's most distinctive primitive.
 
 ---
 
 ## Step 7: Interact
 
-**Target:** `https://apify.com/pricing` (monthly/annual toggle). Two-step flow: scrape → /interact with scrape_id.
+**STATUS: Not run** (deferred for time). Pre-test capability map below.
+
+**Target (would be):** `https://apify.com/pricing` (monthly/annual toggle). Two-step flow: scrape → /interact with scrape_id.
 **Competitors with this primitive:** Firecrawl, **Spider** (browser endpoint), **Crawl4AI** (browser interactions + action DSL).
 
 | Dimension | Firecrawl | Spider | Crawl4AI | ScrapeGraphAI | Apify | Exa |
@@ -287,18 +305,16 @@ Firecrawl was the only provider that produced consistently shaped, content-compl
 | Failure behavior | | | | N/A | N/A | N/A |
 | Notes | | | | | | |
 
-### Reflections
-- **Updated capability assessment:** Step was originally drafted as "Firecrawl-only" but Spider has a `browser` endpoint and Crawl4AI has browser interactions with an action DSL. This is a **3-way design comparison** worth surfacing in the interview: prompt (Firecrawl) vs. unknown-style (Spider) vs. DSL (Crawl4AI). Different bets on who the user is and how deterministic they want the interaction to be.
-- **SCRIPT GAP:** `step7_interact.py` doesn't test Spider or Crawl4AI. Both runners need browser-interaction methods.
-
-### Verbatim observations
-*(direct quotes / reactions, captured as you share them)*
+### Reflections (pre-test only — step not run)
+- **3-way design comparison** worth surfacing in the interview even without running: Firecrawl uses natural-language prompt, Spider uses an actions array, Crawl4AI uses a JavaScript DSL. Different bets on who the user is and how deterministic they want the interaction to be (NL > readable but stochastic; DSL > deterministic but limited).
 
 ---
 
 ## Step 8: Parse
 
-**Target:** Download a PDF from a competitor site, parse with Firecrawl `/parse` (multipart/form-data) for both markdown and JSON schema extraction.
+**STATUS: Not run** (deferred for time). Pre-test capability map below.
+
+**Target (would be):** Download a PDF from a competitor site, parse with Firecrawl `/parse` (multipart/form-data) for both markdown and JSON schema extraction.
 **Competitors with this primitive:** Firecrawl, **Spider** (transform endpoint), **Crawl4AI** (PDF parsing). ScrapeGraphAI partial (URL-only), Apify partial (actor required), Exa N/A.
 
 | Dimension | Firecrawl | Spider | Crawl4AI | ScrapeGraphAI | Apify | Exa |
@@ -312,18 +328,15 @@ Firecrawl was the only provider that produced consistently shaped, content-compl
 | Failure behavior | | | | N/A | N/A | N/A |
 | Notes | | | | | | |
 
-### Reflections
-- **Updated capability assessment:** Originally marked Firecrawl-only. Spider's `transform` endpoint and Crawl4AI's PDF parsing both qualify, though file-type breadth (.docx, .xlsx, etc.) is unverified for both — Firecrawl supports a wider list per CLAUDE_INSTRUCTIONS.
-- **SCRIPT GAP:** `step8_parse.py` doesn't test Spider or Crawl4AI. Both runners need parse equivalents. Crawl4AI is a Python library with no file-upload HTTP shape — comparison is structurally awkward (you call a Python function, not a hosted API).
-
-### Verbatim observations
-*(direct quotes / reactions, captured as you share them)*
+### Reflections (pre-test only — step not run)
+- Capability gap on file types: Firecrawl supports `.pdf`, `.docx`, `.doc`, `.odt`, `.rtf`, `.xlsx`, `.xls`, `.html`, `.htm` (per docs). Spider's `transform` and Crawl4AI's PDF parsing are PDF-focused — narrower input range.
+- Architectural awkwardness: Spider's `transform` takes a content string (not file upload). Crawl4AI is a Python library (no hosted parse endpoint). Only Firecrawl exposes file upload as a first-class hosted primitive (`multipart/form-data`).
 
 ---
 
 ## Cross-cutting themes
 
-*(populated as patterns emerge across steps)*
+The sections below contain the patterns that emerged across competitor surveys (pre-test docs review of all 6 competitors) and the 3 run steps (Search, Map, JSON schema). These are the synthesis-grade observations — interview framing lives here, not in the per-step tables.
 
 ### Competitor API design notes
 
@@ -642,20 +655,53 @@ These came out of the survey and are worth flagging to Nick C in the interview a
 - /interact — browser interaction after scrape
 - /parse — local file upload + structured extraction
 
-### Where Firecrawl wins
-*(quality, latency, DX, cost — fill in as we go)*
+### Where Firecrawl wins (synthesis across run steps 1, 2, 4)
+
+1. **Latency** — ~24x faster than Spider on exa.ai map (1.07s vs 24.22s); consistently fastest across step 2; on step 4, the only fast non-cached extractor (3.3s vs 16-30s for LLM-based competitors).
+2. **Schema enforcement** — only competitor with server-enforced JSON schema. SGAI/Crawl4AI/Exa each exhibited a distinct LLM-best-effort failure mode (caching that hides variance, shape drift via array wrapping, silent failure with empty content).
+3. **Content completeness on step 4** — only provider that found multiple pricing tiers on the test page; LLM-based competitors stopped at the first match.
+4. **Edge-case handling** — step 1 search resolved the Crawl4AI "no pricing page" edge case by surfacing external pricing-adjacent references rather than failing or hallucinating.
+5. **Default-everything behavior** — /map returns all URLs (4997+ on spider.cloud) vs. competitors' default-100 cap. Better for first-time evaluation.
+6. **Reliability on hostile sites** — Crawl4AI hung on apify.com twice; Firecrawl handled it without issue. Managed-vs-self-hosted differential.
+7. **Unique primitives competitors don't have** — /agent (autonomous research) and /parse (file upload, broad file-type support) have no real equivalents. /map and /interact have weaker analogs.
 
 ### Where competitors match or exceed
-*(fill in as we go)*
+
+1. **SGAI matches on API surface** — they've copied Firecrawl's `/scrape` shape byte-for-byte (`formats: [{type: "json", schema}]`) and have a public migration-from-Firecrawl page. The bake-off framing is harder against them than against any other competitor.
+2. **SGAI may share an upstream search index** — step 1 results were nearly identical to Firecrawl's (same Capterra link surfaced for the same query). Search quality may be commodity between these two; differentiation lives in the API surrounding the call.
+3. **Brave's index moat** — first-party search index is something Firecrawl doesn't own. Their `LLM context` endpoint (prepackaged retrieval-ready chunks) is a different primitive shape worth understanding.
+4. **Exa's find-similar-links** — only possible because they own an index; Firecrawl can't replicate without owning one.
+5. **SGAI's monitoring + cron** — first-class scheduled-extraction primitive (Firecrawl ships change tracking as an attribute, not a primitive with built-in scheduling).
+6. **SGAI's caching** — auto-cached responses are cheaper/faster on repeat calls (cuts both ways — can hide variance).
+7. **Spider's CLI** — Firecrawl's internal friction log notes CLI gaps; Spider has a CLI that may or may not be closer to feature parity with their SDK.
 
 ### Surprises
-*(unexpected findings worth surfacing in the interview)*
+
+1. **SGAI is the most direct Firecrawl competitor** — copies the API shape, has a migration page, accurate docs. Posture is "successor," not "peer." This is harder to defend against than Spider's "peer" posture or Apify's different-category posture.
+2. **Exa silently failed on step 4.** 200 OK with empty `summary` field. No error. Worst class of failure mode. Reproducible.
+3. **Crawl4AI hung on apify.com on step 2 — twice.** Managed services need to handle hostile sites; libraries don't always. Concrete data point for the "managed vs self-hosted" framing.
+4. **Spider's coverage of its own properties is weak.** Couldn't return its own pricing page from search (step 1, 401); /v1/links returned 100 URLs from spider.cloud where Firecrawl found 4997.
+5. **Brave's NL query understanding mutates technical queries.** "Spider pricing page" surfaced arachnid results. Same NL technique that Firecrawl uses for graceful edge-case handling can degrade intent matching when applied aggressively.
+6. **Three of six competitors have moved up the stack toward LLM-shaped responses.** Crawl4AI bakes LLM Q&A into scaffolding; Exa has highlights; Brave has an LLM context endpoint. Firecrawl's bet on decoupled primitives (LLM is buyer's downstream concern) is now visibly contrarian.
 
 ### SDK vs CLI observations
-*(per the methodology note — capture any place SDK was clearly better/worse than CLI would be)*
+- All testing was via Python SDKs (CLI deferred). Firecrawl's internal friction log identified CLI-vs-SDK gaps; this test reinforces the SDK-as-default pattern.
+- SDK ergonomics where they mattered: SGAI's docs accurately reflected SDK shape (Pydantic schemas accepted directly); Crawl4AI required a non-obvious wrapper (`provider`/`api_token` must be inside `LLMConfig`, not directly on `LLMExtractionStrategy`) — that was a real bug in our runner until the docs review.
+- Spider's CLI presence vs. SDK breadth not directly tested; flagged for follow-up.
 
 ### Failure-mode patterns
-*(silent failures, charged-on-failure, error message quality)*
+
+| Provider | Pattern observed |
+|---|---|
+| Firecrawl | Loud or graceful — no silent failures observed across 3 run steps |
+| Spider | **Silent quality issues on its own domain** (step 1 401 on own pricing; step 2 100-URL cap from own site vs Firecrawl's 4997) |
+| Crawl4AI | **Hangs on JS-heavy sites** (apify.com); **shape drift on JSON output** (array-wrapping). Reliability + fidelity issues. |
+| ScrapeGraphAI | **Clean failures resolve quickly** (run 1 → docs check → run 2 succeeded). **Caching that masks variance** on step 4. |
+| Exa | **Silent failure** (step 4 200 OK with empty summary). Worst class. |
+| Apify | Not directly tested for failure modes — schema extraction not a primitive. |
+| Brave | **Silent quality** (NL query mutation produces wrong-domain results without error). |
+
+**Pattern:** Firecrawl is the only provider in the survey that fails loudly when it fails. All five competitors that were tested in run steps exhibited at least one silent-quality issue. This is the strongest interview-ready statement on reliability — *agentic systems propagate silent failures downstream as bad data; loud failures stop the loop.*
 
 ---
 
@@ -663,10 +709,14 @@ These came out of the survey and are worth flagging to Nick C in the interview a
 
 When you paste this file into a fresh Claude conversation, prompt it with something like:
 
-> I just ran a head-to-head competitive test of Firecrawl vs. five competitors across 8 primitives. The full results, per-step reflections, and cross-cutting themes are below. Help me synthesize this into:
-> 1. A 3-bullet executive summary I can lead the CTO interview with
-> 2. The 2-3 strongest "Firecrawl differentiator" claims, each backed by a specific data point from the tests
-> 3. The 1-2 weakest spots competitors revealed — and how I'd respond if asked
+> I'm prepping for a mock interview with Firecrawl's CTO. I ran a partial competitive test of Firecrawl vs. five competitors plus one research-only addition (Brave). I tested 3 of 8 primitives empirically — search, map, and JSON schema extraction — and did docs/API research for the others. The full results, per-step reflections, cross-cutting trends, and a "where Firecrawl wins / where competitors match / surprises" synthesis at the end are below. Help me with:
+>
+> 1. A 3-bullet executive summary I can lead the CTO interview with — what's the headline?
+> 2. The 2-3 strongest "Firecrawl differentiator" claims, each backed by a specific data point from the tests (not from the pre-test docs survey)
+> 3. The 1-2 weakest spots competitors revealed — and how I'd respond to a CTO question about each
 > 4. One surprise or non-obvious finding the CTO is unlikely to already know
+> 5. A handful of strategic / product-roadmap questions to raise with Nick C — questions where my findings imply a real choice (e.g. "should /scrape ship LLM-shaped response options"; "should monitoring be promoted from attribute to primitive")
+>
+> Be honest about what's empirical (n=1 tests on a single page) vs. what's docs-survey-only. Flag where the framing is well-supported vs. where it's a hypothesis that needs more data.
 >
 > [paste this whole file]
