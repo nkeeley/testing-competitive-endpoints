@@ -1,4 +1,9 @@
-"""Crawl4AI runner — wraps AsyncWebCrawler in a sync interface."""
+"""Crawl4AI runner — wraps AsyncWebCrawler in a sync interface.
+
+All async calls are wrapped in `asyncio.wait_for(..., timeout=DEFAULT_TIMEOUT)`
+so a hung page render (e.g. heavy JS, anti-bot page that never resolves) will
+fail loudly with TimeoutError instead of blocking the test suite.
+"""
 import asyncio
 import json
 import os
@@ -6,6 +11,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import OPENAI_API_KEY
+
+DEFAULT_TIMEOUT = 60  # seconds — adjust if a step's runtime legitimately needs more
+
+
+def _run_with_timeout(coro_factory, timeout=DEFAULT_TIMEOUT):
+    """Run a 0-arg coroutine factory under a wall-clock timeout."""
+    return asyncio.run(asyncio.wait_for(coro_factory(), timeout=timeout))
 
 
 def scrape_markdown(url):
@@ -18,7 +30,7 @@ def scrape_markdown(url):
                 "markdown": result.markdown,
                 "success": result.success,
             }
-    return asyncio.run(_run())
+    return _run_with_timeout(_run)
 
 
 def crawl(start_url, limit=20):
@@ -49,7 +61,7 @@ def crawl(start_url, limit=20):
                         if href and base in href and href not in visited:
                             queue.append(href)
         return results
-    return asyncio.run(_run())
+    return _run_with_timeout(_run, timeout=DEFAULT_TIMEOUT * 4)  # crawl can be longer
 
 
 def url_seeding(url, limit=100):
@@ -78,7 +90,7 @@ def url_seeding(url, limit=100):
                 "external_urls": [l.get("href") for l in external[:limit] if l.get("href")],
                 "method": "fallback_link_extraction",
             }
-    return asyncio.run(_run())
+    return _run_with_timeout(_run)
 
 
 def scrape_json(url, schema):
@@ -109,7 +121,7 @@ def scrape_json(url, schema):
                 "extracted": extracted,
                 "success": result.success,
             }
-    return asyncio.run(_run())
+    return _run_with_timeout(_run)
 
 
 def interact(url, js_code=None, wait_for=None):
@@ -131,7 +143,7 @@ def interact(url, js_code=None, wait_for=None):
                 "markdown": result.markdown,
                 "success": result.success,
             }
-    return asyncio.run(_run())
+    return _run_with_timeout(_run)
 
 
 def parse_pdf(pdf_path_or_url):
@@ -151,4 +163,4 @@ def parse_pdf(pdf_path_or_url):
                 "markdown": result.markdown,
                 "success": result.success,
             }
-    return asyncio.run(_run())
+    return _run_with_timeout(_run)

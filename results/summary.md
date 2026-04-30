@@ -88,12 +88,33 @@
 | Failure behavior | | | | N/A | N/A | N/A |
 | Notes | | | | | | |
 
-### Reflections
-- **Updated capability assessment:** Originally drafted as "Firecrawl-only" before competitor surveys. Spider's `links` and Crawl4AI's URL seeding both qualify as map equivalents.
-- **SCRIPT GAP:** `step2_map.py` only tests Firecrawl. Spider and Crawl4AI map equivalents need runners and step-script additions.
+### Reflections (after first run)
+
+**Speed comparison (across 5 competitor sites mapped):**
+
+| Site | Firecrawl | Spider | Crawl4AI |
+|---|---|---|---|
+| spider.cloud | **1.97s** / 4997 URLs | 10.99s / 100 URLs | 14.13s / 100 URLs |
+| crawl4ai.com | **4.58s** / 92 URLs | 14.26s / 100 URLs | 5.13s / 86 URLs |
+| scrapegraphai.com | **3.13s** / 340 URLs | 2.91s / 100 URLs | 5.06s / 100 URLs |
+| apify.com | **3.36s** / 4847 URLs | 6.39s / 100 URLs | **HUNG** (timeout fix added) |
+| exa.ai | **1.07s** / 1829 URLs | 24.22s / 100 URLs | (not reached due to apify hang) |
+
+**Three findings worth landing in the interview:**
+
+1. **Firecrawl is dramatically faster across the board.** On exa.ai specifically: 1.07s (Firecrawl) vs. 24.22s (Spider) — **~24x speed advantage**. On spider.cloud: 1.97s vs 10.99s — ~5x. Even the closest competitor (Spider on scrapegraphai.com at 2.91s) only matched Firecrawl on the smallest target. **At scale, this latency advantage compounds — agentic loops doing /map → /scrape → /extract per page are very latency-sensitive.**
+
+2. **Default behavior is a DX philosophy choice (and Firecrawl's is more useful for buyer evaluation).** Firecrawl returns *all* URLs by default (often thousands); Spider and Crawl4AI both default to 100. Concrete example: spider.cloud → Firecrawl returned 4997 URLs vs Spider's 100 from their own site. This is opinionated either way:
+   - **Firecrawl ("give me everything"):** First-time buyers get the full picture immediately. Better for evaluation. May cost more in credits per call.
+   - **Spider/Crawl4AI ("give me 100"):** Cheaper per call, but pagination friction for the buyer. Site appears smaller than it is in evaluation.
+   Worth a sentence in the synthesis on which default the buyer prefers — and whether Firecrawl's "all by default" is a deliberate sales-time choice.
+
+3. **Crawl4AI's hang on apify.com is a reliability signal.** Crawl4AI completed spider.cloud, crawl4ai.com, and scrapegraphai.com (all within 5-15s), then hung indefinitely on apify.com. Likely causes: heavy JS render, anti-bot detection, or just a slow page that crawl4ai's headless browser waited on without timing out. **Reliability under unusual sites is a real differentiator — a managed service like Firecrawl needs to handle weird targets gracefully where a self-hosted library may not.** Added a 60s timeout to the crawl4ai_runner to prevent future hangs; the failure on apify is now a logged TimeoutError, not a hanging process.
+
+**Tester observation (verbatim):** *"Firecrawl defaults to all urls while the other services limit to first 100 by default. The samples looked good."*
 
 ### Verbatim observations
-*(direct quotes / reactions, captured as you share them)*
+- *"Crawl4AI hung up on the Apify map call for some reason. Until that point, very clear that firecrawl defaults to all urls while the other services limit to first 100 by default. The samples looked good."*
 
 ---
 
@@ -384,6 +405,20 @@ After surveying Spider, Apify, Crawl4AI, and ScrapeGraphAI at the API-surface le
 | Search index with content augmentation | Exa, **Brave** | Own the index; extraction is augmentation, not the product |
 
 **ScrapeGraphAI is the only direct head-to-head rival of the six.** Apify and Crawl4AI play different games; Exa and Brave play a different game (search index, not extraction); Spider is the closest peer but bets on a different productization (more primitives, AI Studio as a wrapped subscription).
+
+### Cross-cutting observations from Step 2 (Map)
+
+**Trend 1 — Firecrawl's /map is dramatically faster than competitors.** Across 5 sites mapped: Firecrawl 1.07–4.58s; Spider 2.91–24.22s; Crawl4AI 5.06–14.13s when it didn't hang. Most striking single comparison: exa.ai → **Firecrawl 1.07s vs Spider 24.22s (~24x faster)**. At small scale this is "nice to have"; at agentic scale (where /map → /scrape → /extract loops fire repeatedly), it's the kind of latency tax that makes or breaks an end-user-facing feature. **Latency is the strongest single quantitative differentiator surfaced so far in this competitive test.**
+
+**Trend 2 — Crawl4AI hangs on JS-heavy / anti-bot sites (apify.com).** Hung on the same site twice across two separate runs. Even with a 60-second `asyncio.wait_for` wrapping the call, the hang persists — likely the headless browser's cleanup phase is swallowing the cancellation, not the awaitable itself. Sites Crawl4AI completed: spider.cloud, crawl4ai.com, scrapegraphai.com, exa.ai. Site that broke it: apify.com (heavy React/JS, anti-bot). **Implication for the interview:** *reliability on hostile or unusual sites is part of what buyers pay a managed service for*. A self-hosted library can crash, hang, or partially complete on sites it doesn't expect; a managed service like Firecrawl is on the hook for that resilience and has presumably engineered around it. This is a concrete "managed-vs-self-hosted" data point.
+
+**Trend 3 — Default response sizes reveal a DX philosophy split.** Firecrawl returns *all* URLs by default (often thousands — 4997 on spider.cloud, 4847 on apify.com); Spider and Crawl4AI both default to 100. Two coherent design choices:
+- *Firecrawl ("give me everything"):* better for first-time evaluation; opinionated; possibly higher per-call cost.
+- *Spider/Crawl4AI ("give me 100"):* conservative; cheaper per call; pagination friction for the buyer.
+
+This is the *third* "design philosophy" pattern in this survey alongside few-vs-many primitives and decoupled-vs-LLM-baked-in responses. Worth flagging as a coherent Firecrawl identity: opinionated defaults that prioritize discoverability over cost-control-by-stinginess.
+
+**Trend 4 — Spider's coverage of its own properties is weak.** Two independent signals: (1) Spider's search couldn't return `spider.cloud/pricing` (Step 1, 401), (2) Spider's `/v1/links` returned 100 URLs from spider.cloud while Firecrawl returned 4997 from the same domain. Spider may have a small cap on links per domain, or their crawler may not have indexed their own site comprehensively. Either way, **a competitor's search/map quality on its own properties is a useful sanity check** — and Spider failed it twice.
 
 ### Cross-cutting observations from Step 1 (Search)
 
