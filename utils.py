@@ -35,17 +35,41 @@ def excerpt(obj, n=500):
 
 
 def credits_used(result_dict):
-    """Extract Firecrawl creditsUsed from a scrape/crawl/search response."""
-    if not isinstance(result_dict, dict):
+    """Extract Firecrawl creditsUsed from a scrape/crawl/search response.
+    Handles dict, Pydantic model, and string-serialized Pydantic (when saved JSON)."""
+    if result_dict is None:
         return "not reported"
-    for key in ("creditsUsed", "credits_used"):
-        if key in result_dict:
-            return result_dict[key]
-    meta = result_dict.get("metadata") or result_dict.get("usage") or {}
-    if isinstance(meta, dict):
+    # Pydantic model — try attribute access
+    for attr in ("credits_used", "creditsUsed"):
+        val = getattr(result_dict, attr, None)
+        if val is not None:
+            return val
+    # Pydantic metadata
+    meta = getattr(result_dict, "metadata", None) or getattr(result_dict, "usage", None)
+    if meta is not None:
+        for attr in ("credits_used", "creditsUsed"):
+            val = getattr(meta, attr, None)
+            if val is not None:
+                return val
+    # Dict path
+    if isinstance(result_dict, dict):
         for key in ("creditsUsed", "credits_used"):
-            if key in meta:
-                return meta[key]
+            if key in result_dict:
+                return result_dict[key]
+        meta = result_dict.get("metadata") or result_dict.get("usage") or {}
+        if isinstance(meta, dict):
+            for key in ("creditsUsed", "credits_used"):
+                if key in meta:
+                    return meta[key]
+    # Last resort: string-search a serialized Pydantic dump
+    try:
+        import re
+        s = str(result_dict)
+        m = re.search(r"credits_used=(\d+)", s) or re.search(r"creditsUsed[\"':\s=]+(\d+)", s)
+        if m:
+            return int(m.group(1))
+    except Exception:
+        pass
     return "not reported"
 
 

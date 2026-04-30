@@ -30,15 +30,24 @@ def _headers():
     }
 
 
-def smartscraper(url, prompt):
-    """Single-page LLM extraction. Used in step 3+.
-    NOTE: v1 URL/field names not yet verified against current docs — may need
-    updating to v2 shape. Address when step 3 runs.
+def smartscraper(url, prompt, output_schema=None):
+    """Single-page LLM extraction.
+
+    Verified against docs.scrapegraphai.com/services/smartscraper:
+      - Endpoint: POST https://api.scrapegraphai.com/v1/smartscraper
+      - Body: {website_url, user_prompt, output_schema?}
+      - output_schema accepts Pydantic-style JSON schema dict (or model_json_schema())
+
+    For fair comparison with Firecrawl's schema-enforced extraction, callers
+    should pass output_schema, not just a prompt.
     """
+    body = {"website_url": url, "user_prompt": prompt}
+    if output_schema is not None:
+        body["output_schema"] = output_schema
     resp = requests.post(
         f"{V1_BASE_URL}/smartscraper",
         headers=_headers(),
-        json={"website_url": url, "user_prompt": prompt},
+        json=body,
     )
     resp.raise_for_status()
     return resp.json()
@@ -53,6 +62,29 @@ def search(query, num_results=5):
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def scrape(url, formats):
+    """Verified against docs.scrapegraphai.com/services/scrape.
+    Drop-in equivalent to Firecrawl's /scrape with formats array.
+    formats: list of dicts like [{"type": "markdown"}] or
+             [{"type": "json", "prompt": "...", "schema": {...}}]
+    """
+    resp = requests.post(
+        f"{V2_BASE_URL}/scrape",
+        headers=_headers(),
+        json={"url": url, "formats": formats},
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def scrape_json(url, schema, prompt="Extract structured data following the schema"):
+    """Schema-based extraction via /scrape with formats: [{type: 'json', ...}].
+    Most direct apples-to-apples comparison with Firecrawl /scrape JSON schema.
+    Schema enforcement is LLM-based, not server-enforced (per docs review).
+    """
+    return scrape(url, formats=[{"type": "json", "prompt": prompt, "schema": schema}])
 
 
 def crawl(url, prompt="Extract all content as markdown", limit=20):

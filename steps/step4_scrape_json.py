@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import runners.firecrawl_runner as fc_runner
 import runners.scrapegraphai_runner as sgai_runner
 import runners.crawl4ai_runner as crawl4ai_runner
+import runners.exa_runner as exa_runner
 from utils import timed_call, save_result, excerpt, credits_used, print_step_header, print_competitor_header, print_comparison_table
 from schemas import PRICING_SCHEMA
 from config import PRIMARY_PRICING_URL
@@ -51,9 +52,11 @@ def main():
     print(f"  [saved to {fp}]")
     time.sleep(2)
 
-    # --- ScrapeGraphAI ---
+    # --- ScrapeGraphAI (using their /scrape endpoint with formats — closest
+    #     apples-to-apples with Firecrawl /scrape) ---
     print_competitor_header("ScrapeGraphAI")
-    r = timed_call(sgai_runner.smartscraper, TARGET_URL, SGAI_PROMPT)
+    print("  Using /scrape with formats: [{type:'json', schema}] — drop-in shape vs Firecrawl")
+    r = timed_call(sgai_runner.scrape_json, TARGET_URL, PRICING_SCHEMA, SGAI_PROMPT)
     data["scrapegraphai"] = r
     if r["error"]:
         print(f"  ERROR: {r['error']}")
@@ -63,6 +66,21 @@ def main():
         print(f"  Output (full JSON):")
         print(json.dumps(r["result"], indent=2, default=str)[:2000])
     fp = save_result(STEP, "scrapegraphai", r)
+    print(f"  [saved to {fp}]")
+
+    # --- Exa (schema-based via /contents summary.schema) ---
+    print_competitor_header("Exa")
+    print("  Schema-based extraction via /contents summary.schema (LLM-based)")
+    r = timed_call(exa_runner.contents_with_schema, TARGET_URL, PRICING_SCHEMA, SGAI_PROMPT)
+    data["exa"] = r
+    if r["error"]:
+        print(f"  ERROR: {r['error']}")
+    else:
+        print(f"  Latency: {r['latency_s']}s")
+        print(f"  Cost: per request (Exa pricing per call)")
+        print(f"  Output (full JSON):")
+        print(json.dumps(r["result"], indent=2, default=str)[:2000])
+    fp = save_result(STEP, "exa", r)
     print(f"  [saved to {fp}]")
 
     # --- Crawl4AI (LLM extraction strategy) ---
@@ -85,11 +103,10 @@ def main():
     fp = save_result(STEP, "crawl4ai", r)
     print(f"  [saved to {fp}]")
 
-    # --- No-equivalent competitors ---
+    # --- No-equivalent competitors (per WebFetch verification of their docs) ---
     for name, note in [
-        ("Spider", "Returns markdown only — no native JSON schema extraction"),
-        ("Apify", "Structured extraction requires a custom actor — not comparable"),
-        ("Exa", "No scrape primitive (partial via highlights+contents)"),
+        ("Spider", "CONFIRMED ABSENT in docs — no JSON schema parameter on any endpoint, only css_extraction_map (selector-based)"),
+        ("Apify", "Standard actors (website-content-crawler, web-scraper) don't accept JSON schemas — actor-specific extraction logic"),
     ]:
         print_competitor_header(name)
         print(f"  {note} — N/A")
@@ -104,38 +121,41 @@ def main():
             "Firecrawl": "/scrape (JSON schema)",
             "Spider": "N/A",
             "Crawl4AI": "LLMExtractionStrategy",
-            "ScrapeGraphAI": "smartscraper (prompt)",
+            "ScrapeGraphAI": "/scrape (formats:[{type:json,schema}])",
             "Apify": "N/A",
-            "Exa": "N/A",
+            "Exa": "/contents (summary.schema)",
         }),
         ("Has equivalent?", {
-            "Firecrawl": "Yes (native)", "Spider": "No", "Crawl4AI": "Yes (LLM-based)",
-            "ScrapeGraphAI": "Yes (prompt-based)", "Apify": "No", "Exa": "No",
-        }),
-        ("Output quality (1-5)", {
-            "Firecrawl": "___", "Spider": "N/A", "Crawl4AI": "___",
-            "ScrapeGraphAI": "___", "Apify": "N/A", "Exa": "N/A",
+            "Firecrawl": "Yes (native, server-enforced)",
+            "Spider": "No",
+            "Crawl4AI": "Yes (LLM-based)",
+            "ScrapeGraphAI": "Yes (LLM-based)",
+            "Apify": "No",
+            "Exa": "Yes (LLM-based)",
         }),
         ("Latency", {
             "Firecrawl": lat("firecrawl"),
             "Spider": "N/A",
             "Crawl4AI": lat("crawl4ai"),
             "ScrapeGraphAI": lat("scrapegraphai"),
-            "Apify": "N/A", "Exa": "N/A",
+            "Apify": "N/A",
+            "Exa": lat("exa"),
         }),
         ("Cost", {
             "Firecrawl": str(credits_used(data.get("firecrawl", {}).get("result"))) + " credit(s)",
             "Spider": "N/A",
             "Crawl4AI": "free + buyer's LLM tokens",
             "ScrapeGraphAI": "not reported",
-            "Apify": "N/A", "Exa": "N/A",
+            "Apify": "N/A",
+            "Exa": "per request",
         }),
         ("Schema fidelity", {
-            "Firecrawl": "exact schema enforced",
+            "Firecrawl": "EXACT — server enforces schema",
             "Spider": "N/A",
-            "Crawl4AI": "LLM-inferred (model-dependent)",
-            "ScrapeGraphAI": "prompt-inferred",
-            "Apify": "N/A", "Exa": "N/A",
+            "Crawl4AI": "LLM best-effort (model-dependent)",
+            "ScrapeGraphAI": "LLM best-effort",
+            "Apify": "N/A",
+            "Exa": "LLM best-effort",
         }),
         ("Failure behavior", {c: "N/A" for c in competitors}),
         ("Notes", {c: "" for c in competitors}),

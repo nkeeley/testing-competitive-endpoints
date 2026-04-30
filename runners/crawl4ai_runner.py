@@ -95,19 +95,28 @@ def url_seeding(url, limit=100):
 
 def scrape_json(url, schema):
     """Crawl4AI structured outputs via LLMExtractionStrategy.
-    Requires OPENAI_API_KEY in env (uses gpt-4o-mini by default).
+
+    Per docs.crawl4ai.com (verified): provider+api_token must be wrapped in an
+    LLMConfig object — passing them directly to LLMExtractionStrategy is wrong.
+    Output: result.extracted_content is a JSON string; parse with json.loads.
+
+    Requires OPENAI_API_KEY in env (defaults to gpt-4o-mini).
     """
     async def _run():
-        from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
-        from crawl4ai.extraction_strategy import LLMExtractionStrategy
+        from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, LLMConfig, LLMExtractionStrategy
         if not OPENAI_API_KEY:
             return {"error": "OPENAI_API_KEY not set — Crawl4AI structured outputs require an LLM"}
         strategy = LLMExtractionStrategy(
-            provider="openai/gpt-4o-mini",
-            api_token=OPENAI_API_KEY,
+            llm_config=LLMConfig(
+                provider="openai/gpt-4o-mini",
+                api_token=OPENAI_API_KEY,
+            ),
             schema=schema,
             extraction_type="schema",
             instruction="Extract pricing plans from this page following the schema.",
+            apply_chunking=True,
+            input_format="markdown",
+            extra_args={"temperature": 0.0},
         )
         config = CrawlerRunConfig(extraction_strategy=strategy)
         async with AsyncWebCrawler() as crawler:
@@ -121,7 +130,7 @@ def scrape_json(url, schema):
                 "extracted": extracted,
                 "success": result.success,
             }
-    return _run_with_timeout(_run)
+    return _run_with_timeout(_run, timeout=DEFAULT_TIMEOUT * 3)  # LLM calls add latency
 
 
 def interact(url, js_code=None, wait_for=None):

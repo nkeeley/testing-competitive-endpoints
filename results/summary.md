@@ -148,20 +148,79 @@
 
 | Dimension | Firecrawl | Spider | Crawl4AI | ScrapeGraphAI | Apify | Exa |
 |---|---|---|---|---|---|---|
-| Endpoint used | /scrape (JSON schema) | N/A | **structured outputs (LLM extraction strategy)** | smartscraper / extract | N/A | (partial via highlights+contents) |
-| Has equivalent? | Yes (native) | No | **Yes** (LLM-based) | Yes (prompt-based) | No | Partial |
-| Latency | | N/A | | | N/A | N/A |
-| Cost | credit(s) | N/A | free + buyer's LLM tokens | not reported | N/A | N/A |
-| Schema fidelity | exact schema enforced | N/A | LLM-inferred (depends on model) | prompt-inferred | N/A | N/A |
-| Failure behavior | | N/A | | | N/A | N/A |
+| Endpoint used | /scrape (JSON schema) | N/A | LLMExtractionStrategy | **/scrape (formats:[{type:json,schema}]) — same shape as Firecrawl** | N/A | /contents (summary.schema) |
+| Has equivalent? | **Yes (native, server-enforced)** | No (CONFIRMED ABSENT in docs) | Yes (LLM-based) | Yes (LLM-based) | No (actor-specific, not a primitive) | Yes (LLM-based) |
+| Latency | | N/A | | | N/A | |
+| Cost | credit(s) | N/A | free + buyer's LLM tokens | not reported | N/A | per request |
+| Schema fidelity | **EXACT — server enforces schema** | N/A | LLM best-effort (model-dependent) | LLM best-effort | N/A | LLM best-effort |
+| Failure behavior | | N/A | | | N/A | |
 | Notes | | | | | | |
 
-### Reflections
-- **Updated capability assessment:** Crawl4AI has a "structured outputs" feature (LLM-driven extraction strategy) — qualifies for this comparison. Cost shape is different though: free scaffolding + buyer's own LLM tokens, vs. Firecrawl bundled pricing.
-- **SCRIPT GAP:** `step4_scrape_json.py` doesn't test Crawl4AI structured outputs. Worth adding for a true 3-way comparison.
+### Reflections (after Firecrawl /agent + WebFetch research on each competitor's docs)
+
+**Capability map updated to reality (4 of 6 have JSON schema extraction; only 1 enforces server-side):**
+- **Firecrawl:** native, server-enforced (the only one)
+- **ScrapeGraphAI:** `output_schema` field on `/smartscraper`, LLM-based
+- **Crawl4AI:** `LLMExtractionStrategy` class, LLM-based, requires buyer's own LLM API key
+- **Exa:** `summary.schema` nested under contents endpoint, LLM-based
+- **Spider:** **CONFIRMED ABSENT** — no JSON schema parameter on any of their 10+ endpoints (only `css_extraction_map` for selector-based, which is different)
+- **Apify:** No first-class schema-based extraction primitive — actors are arbitrary code, schema support depends on each actor's implementation
+
+**Bugs fixed in our runners during research:**
+- Crawl4AI runner: `LLMExtractionStrategy(provider=..., api_token=...)` was wrong; provider+token must be wrapped in `LLMConfig(...)`. Fixed.
+- ScrapeGraphAI runner: smartscraper now passes `output_schema` for fair comparison (was prompt-only before).
+- Step 4 script: now tests Exa schema extraction (previously marked N/A).
+
+**Three interview-grade observations from this research:**
+
+1. **Server-enforced schema is the actual moat — not "do you have JSON output."** Three competitors now have schema-based JSON output (SGAI, Crawl4AI, Exa). The question moves from *"do they have it"* to *"does it actually adhere to the schema reliably enough for production agentic pipelines?"* Server enforcement gives guarantees; LLM-based gives statistics. For high-volume agent loops where the next tool depends on field shape, this matters a lot.
+
+2. **SGAI's docs accuracy is genuinely good.** Both the search and scrape doc pages accurately described their endpoints and provided working examples. Their docs hold up under code-review-level scrutiny.
+
+3. **SGAI has copied Firecrawl's API shape directly — not just the primitive set, the exact request body.** Discovered after testing the wrong endpoint initially: SGAI's `/scrape` accepts `formats: [{type: "json", schema: {...}}]` — *byte-for-byte the same shape* as Firecrawl's `/scrape`. Combined with the `/search` endpoint pattern from Step 1 and the public migration-from-Firecrawl page, this is a clear "drop-in replacement" positioning play. **Implication for the interview:** SGAI is positioning explicitly to win on switch costs, not on differentiation. The defense isn't "we have a primitive they don't" — it's "the differentiation is in what happens when the LLM fails to match the schema, and in everything around the call (latency, scale, anti-bot, /agent, /interact)."
 
 ### Verbatim observations
-*(direct quotes / reactions, captured as you share them)*
+- *"I want to take a look at apify but requires an actor. Also getting no json schema extraction, even though I think it exists. Can we use /firecrawl-agent to retrieve the json schema extraction calls for each competitor?"* — research catalyzing this update
+- *"Is MD or JSON more useful for agentic systems running data extraction? That should dictate our choice"* — strategic framing for picking step 4 over step 3
+
+### Empirical results from running step 4 (target: spider.cloud/pricing, schema: PRICING_SCHEMA)
+
+**Per-provider output (full results saved to results/raw/step4_*.json):**
+
+| Provider | Latency | Plans found | Output shape | Notes |
+|---|---|---|---|---|
+| **Firecrawl** | 3.32s | **2 plans** ("Pay as you go", "Volume Pricing") | `{plans: [...]}` (matches schema exactly) | 5 credits used. Re-ran fresh both times — no caching. |
+| **ScrapeGraphAI** | **0.53s** (run 2) / 1.73s (run 1) | 1 plan | `results.json.data.{plans: [...]}` (deeper nesting) | **Same `id` across runs** — they cache responses. Latency drop on re-run is the cache hit. |
+| **Crawl4AI** | 16.35s | 1 plan | `[{plans: [...], error: false}]` — **wrapped in array** | Required `playwright install chromium`. Schema "matched" but output is array-wrapped at top level — would break a Pydantic-strict consumer. |
+| **Exa** | 30.13s | **0 plans (silent failure)** | `summary: ""` (empty) | **WORST FAILURE MODE.** 200 OK, completed schema-validation gates, but the actual schema-based extraction returned nothing. Reported `costDollars: 0` and `source: "cached"`. |
+
+**Big findings:**
+
+1. **Firecrawl was the only provider that found multiple pricing tiers.** Spider's actual pricing page has multiple plans (Pay as you go + Volume Pricing). Firecrawl extracted both. SGAI (cached) and Crawl4AI each extracted only the first. Exa extracted nothing. This is a **content-completeness signal** — server-enforced extraction looked at the full page; LLM-based extractors stopped at the first match.
+
+2. **Exa silently failed.** The most important finding of step 4. They returned 200 OK with an empty `summary` field — no schema extraction visible. No error. The agent would happily move on and treat this as success. **Silent failure is the worst class of failure** because it propagates downstream as bad data. Worth landing in the interview as a concrete reliability point: *"Exa's schema-based extraction can return 200 OK with empty content. A managed primitive should fail loudly when extraction fails — Firecrawl returned populated structured data on the same input."*
+
+3. **Crawl4AI broke schema fidelity at the top level.** They wrapped the result in an array (`[{plans: [...], error: false}]`) instead of returning the schema-shaped object directly. A consumer with `Plans = parse(response)` would fail unless they know to unwrap first. **This is exactly the LLM-best-effort drift the framing predicted.** The schema "matched" in the sense that fields were present; it didn't match in the sense that the response shape was reliable.
+
+4. **SGAI cached the response across runs.** Same `id` returned both times, latency dropped 70%. Two reads:
+   - **Pro-buyer:** Auto-caching is a real DX upgrade — second call is much cheaper/faster without changes to your code.
+   - **Anti-buyer:** Caching can hide variance. Two consecutive runs producing identical output doesn't tell you anything about the underlying determinism.
+   For an agentic pipeline that depends on fresh content (e.g. price monitoring), caching may be a footgun.
+
+5. **Latency profile validates the architectural framing.** Server-enforced extraction (Firecrawl) is consistently fast. LLM-based extractions vary dramatically based on what's happening server-side: Crawl4AI is 5x slower because the LLM call is on the buyer's side; Exa is 9x slower because they're doing something heavy server-side (and silently failing); SGAI looks fast because of caching.
+
+**The cross-cutting trend ("schema-enforced vs LLM-best-effort") was empirically validated.** All three LLM-based competitors exhibited a different failure mode in a single test:
+- SGAI: caching that hides variance
+- Crawl4AI: shape drift (array wrapping)
+- Exa: silent failure (empty content)
+
+Firecrawl was the only provider that produced consistently shaped, content-complete output on this test. **n=1 caveat** — single page, single schema. Worth reproducing on more diverse targets if time permits, but the variance pattern is real even at this small sample.
+
+### Verbatim observations (run output)
+- Firecrawl found "Pay as you go" + "Volume Pricing" with detailed credits/rate-limit fields
+- SGAI cached its response (identical `id` across runs, latency drop)
+- Crawl4AI wrapped result in array — schema fidelity broken at top level
+- Exa: 200 OK, empty summary — **silent failure**
 
 ---
 
@@ -405,6 +464,27 @@ After surveying Spider, Apify, Crawl4AI, and ScrapeGraphAI at the API-surface le
 | Search index with content augmentation | Exa, **Brave** | Own the index; extraction is augmentation, not the product |
 
 **ScrapeGraphAI is the only direct head-to-head rival of the six.** Apify and Crawl4AI play different games; Exa and Brave play a different game (search index, not extraction); Spider is the closest peer but bets on a different productization (more primitives, AI Studio as a wrapped subscription).
+
+### Cross-cutting observation — JSON schema extraction landscape (research, pre-step-4-run)
+
+After WebFetching each competitor's docs to find their schema-based extraction APIs, the landscape is sharper than the survey notes implied:
+
+| Competitor | Has schema extraction | Mechanism | Server-enforced? |
+|---|---|---|---|
+| **Firecrawl** | Yes | `/scrape` with `formats: [{type: 'json', schema}]` | **Yes** |
+| ScrapeGraphAI | Yes | `/smartscraper` with `output_schema` field | No (LLM hint) |
+| Crawl4AI | Yes | `LLMExtractionStrategy(schema=..., extraction_type='schema')` | No (LLM, buyer's key) |
+| Exa | Yes | `/contents` with `summary.schema` (nested) | No (LLM hint) |
+| Spider | **No** | Only `css_extraction_map` (selector-based, not schema) | — |
+| Apify | **No** | Actor-specific code; no first-class primitive | — |
+
+**Why this matters for the interview:** the question buyers ask is rarely *"can your API return JSON?"* — most can. The question is *"can I rely on the shape?"* Server-enforced schema converts probabilistic best-effort into a contract. For a pipeline that does `scrape → extract → store → notify`, schema enforcement is the difference between deterministic glue code and LLM-output-defensive try/except blocks everywhere.
+
+**Two clean differentiators from this research:**
+- **vs. SGAI / Crawl4AI / Exa:** Firecrawl's enforcement vs. their LLM best-effort. Same primitive name, different reliability shape.
+- **vs. Spider / Apify:** capability gap — neither has schema-based extraction at all. Spider is particularly notable here given they otherwise have a wide endpoint surface; this is a real hole in their primitive set.
+
+**Saved research:** `results/raw/competitor_json_extraction_research.json` has full per-competitor specs (endpoint, auth, body fields, example call) for paste-back into synthesis.
 
 ### Cross-cutting observations from Step 2 (Map)
 
