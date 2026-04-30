@@ -8,6 +8,9 @@ SPIDER_API_KEY = os.environ.get("SPIDER_API_KEY", "")
 EXA_API_KEY = os.environ.get("EXA_API_KEY", "")
 APIFY_API_TOKEN = os.environ.get("APIFY_API_TOKEN", "")
 SCRAPEGRAPHAI_API_KEY = os.environ.get("SCRAPEGRAPHAI_API_KEY", "")
+BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "")
+# OPENAI_API_KEY needed for Crawl4AI's LLM extraction (step 4)
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 COMPETITORS = {
     "spider": {

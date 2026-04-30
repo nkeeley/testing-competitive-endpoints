@@ -12,6 +12,7 @@ import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import runners.firecrawl_runner as fc_runner
 import runners.scrapegraphai_runner as sgai_runner
+import runners.crawl4ai_runner as crawl4ai_runner
 from utils import timed_call, save_result, excerpt, credits_used, print_step_header, print_competitor_header, print_comparison_table
 from schemas import PRICING_SCHEMA
 from config import PRIMARY_PRICING_URL
@@ -64,12 +65,31 @@ def main():
     fp = save_result(STEP, "scrapegraphai", r)
     print(f"  [saved to {fp}]")
 
+    # --- Crawl4AI (LLM extraction strategy) ---
+    print_competitor_header("Crawl4AI")
+    print("  (uses OPENAI_API_KEY for LLM extraction — gpt-4o-mini)")
+    r = timed_call(crawl4ai_runner.scrape_json, TARGET_URL, PRICING_SCHEMA)
+    data["crawl4ai"] = r
+    if r["error"]:
+        print(f"  ERROR: {r['error']}")
+    else:
+        print(f"  Latency: {r['latency_s']}s")
+        print(f"  Cost: free scaffolding + buyer's LLM tokens")
+        print(f"  Output (full JSON):")
+        result = r["result"]
+        if isinstance(result, dict):
+            extracted = result.get("extracted")
+        else:
+            extracted = result
+        print(json.dumps(extracted, indent=2, default=str)[:2000])
+    fp = save_result(STEP, "crawl4ai", r)
+    print(f"  [saved to {fp}]")
+
     # --- No-equivalent competitors ---
     for name, note in [
         ("Spider", "Returns markdown only — no native JSON schema extraction"),
-        ("Crawl4AI", "Returns markdown only — no native JSON schema extraction"),
         ("Apify", "Structured extraction requires a custom actor — not comparable"),
-        ("Exa", "No scrape primitive"),
+        ("Exa", "No scrape primitive (partial via highlights+contents)"),
     ]:
         print_competitor_header(name)
         print(f"  {note} — N/A")
@@ -83,34 +103,37 @@ def main():
         ("Endpoint used", {
             "Firecrawl": "/scrape (JSON schema)",
             "Spider": "N/A",
-            "Crawl4AI": "N/A",
+            "Crawl4AI": "LLMExtractionStrategy",
             "ScrapeGraphAI": "smartscraper (prompt)",
             "Apify": "N/A",
             "Exa": "N/A",
         }),
         ("Has equivalent?", {
-            "Firecrawl": "Yes (native)", "Spider": "No", "Crawl4AI": "No",
+            "Firecrawl": "Yes (native)", "Spider": "No", "Crawl4AI": "Yes (LLM-based)",
             "ScrapeGraphAI": "Yes (prompt-based)", "Apify": "No", "Exa": "No",
         }),
         ("Output quality (1-5)", {
-            "Firecrawl": "___", "Spider": "N/A", "Crawl4AI": "N/A",
+            "Firecrawl": "___", "Spider": "N/A", "Crawl4AI": "___",
             "ScrapeGraphAI": "___", "Apify": "N/A", "Exa": "N/A",
         }),
         ("Latency", {
             "Firecrawl": lat("firecrawl"),
-            "Spider": "N/A", "Crawl4AI": "N/A",
+            "Spider": "N/A",
+            "Crawl4AI": lat("crawl4ai"),
             "ScrapeGraphAI": lat("scrapegraphai"),
             "Apify": "N/A", "Exa": "N/A",
         }),
         ("Cost", {
             "Firecrawl": str(credits_used(data.get("firecrawl", {}).get("result"))) + " credit(s)",
-            "Spider": "N/A", "Crawl4AI": "N/A",
+            "Spider": "N/A",
+            "Crawl4AI": "free + buyer's LLM tokens",
             "ScrapeGraphAI": "not reported",
             "Apify": "N/A", "Exa": "N/A",
         }),
         ("Schema fidelity", {
             "Firecrawl": "exact schema enforced",
-            "Spider": "N/A", "Crawl4AI": "N/A",
+            "Spider": "N/A",
+            "Crawl4AI": "LLM-inferred (model-dependent)",
             "ScrapeGraphAI": "prompt-inferred",
             "Apify": "N/A", "Exa": "N/A",
         }),

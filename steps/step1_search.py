@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Step 1: Search — Find pricing pages for each competitor.
-Competitors with search: Firecrawl, Spider, Exa.
+Competitors with search: Firecrawl, Spider, Exa, ScrapeGraphAI, Brave.
 """
 import sys
 import os
@@ -10,6 +10,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import runners.firecrawl_runner as fc_runner
 import runners.spider_runner as spider_runner
 import runners.exa_runner as exa_runner
+import runners.scrapegraphai_runner as sgai_runner
+import runners.brave_runner as brave_runner
 from utils import timed_call, save_result, excerpt, print_step_header, print_competitor_header, print_comparison_table
 from config import COMPETITORS
 
@@ -60,37 +62,56 @@ def main():
     fp = save_result(STEP, "exa", exa_out)
     print(f"  [saved to {fp}]")
 
+    # --- ScrapeGraphAI ---
+    print_competitor_header("ScrapeGraphAI")
+    sgai_out = run_queries(sgai_runner.search, QUERIES, num_results=3)
+    fp = save_result(STEP, "scrapegraphai", sgai_out)
+    print(f"  [saved to {fp}]")
+
+    # --- Brave ---
+    print_competitor_header("Brave")
+    brave_out = run_queries(brave_runner.search, QUERIES, limit=3)
+    fp = save_result(STEP, "brave", brave_out)
+    print(f"  [saved to {fp}]")
+
     # --- No-equivalent competitors ---
-    for name in ["Crawl4AI", "ScrapeGraphAI", "Apify"]:
+    for name in ["Crawl4AI", "Apify"]:
         print_competitor_header(name)
         print("  No search equivalent — N/A")
 
-    competitors = ["Firecrawl", "Spider", "Crawl4AI", "ScrapeGraphAI", "Apify", "Exa"]
+    competitors = ["Firecrawl", "Spider", "Crawl4AI", "ScrapeGraphAI", "Apify", "Exa", "Brave"]
     rows = [
         ("Endpoint used", {
             "Firecrawl": "/search",
             "Spider": "spider.search()",
             "Crawl4AI": "N/A",
-            "ScrapeGraphAI": "N/A",
+            "ScrapeGraphAI": "/searchscraper",
             "Apify": "N/A (partial via actors)",
             "Exa": "exa.search_and_contents()",
+            "Brave": "/web/search",
         }),
         ("Has equivalent?", {
             "Firecrawl": "Yes", "Spider": "Yes", "Crawl4AI": "No",
-            "ScrapeGraphAI": "No", "Apify": "Partial", "Exa": "Yes",
+            "ScrapeGraphAI": "Yes", "Apify": "Partial", "Exa": "Yes", "Brave": "Yes",
         }),
         ("Output quality (1-5)", {c: "___" for c in competitors}),
         ("Latency (first query)", {
             "Firecrawl": rep_latency(fc_out),
             "Spider": rep_latency(spider_out),
-            "Crawl4AI": "N/A", "ScrapeGraphAI": "N/A", "Apify": "N/A",
+            "Crawl4AI": "N/A",
+            "ScrapeGraphAI": rep_latency(sgai_out),
+            "Apify": "N/A",
             "Exa": rep_latency(exa_out),
+            "Brave": rep_latency(brave_out),
         }),
         ("Cost", {
             "Firecrawl": "per credit",
             "Spider": "not reported",
-            "Crawl4AI": "N/A", "ScrapeGraphAI": "N/A", "Apify": "N/A",
+            "Crawl4AI": "N/A",
+            "ScrapeGraphAI": "not reported",
+            "Apify": "N/A",
             "Exa": "not reported",
+            "Brave": "not reported (per-request pricing)",
         }),
         ("Failure behavior", {c: "N/A" for c in competitors}),
         ("Notes", {c: "" for c in competitors}),

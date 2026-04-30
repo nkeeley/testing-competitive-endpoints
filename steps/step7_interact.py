@@ -9,11 +9,21 @@ import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import runners.firecrawl_runner as fc_runner
+import runners.spider_runner as spider_runner
+import runners.crawl4ai_runner as crawl4ai_runner
 from utils import timed_call, save_result, excerpt, print_step_header, print_competitor_header, print_comparison_table
 from config import INTERACT_TARGET_URL
 
 STEP = 7
 INTERACT_PROMPT = "Click the annual pricing toggle and extract all plan names and prices for both monthly and annual billing."
+
+# JS code to click the annual toggle on Apify pricing page (used by Crawl4AI and Spider)
+TOGGLE_JS = [
+    "const btns = Array.from(document.querySelectorAll('button, a, label, span, div')); "
+    "const t = btns.find(el => /annual/i.test(el.textContent || '')); "
+    "if (t) t.click();"
+]
+WAIT_FOR_SELECTOR = "css:body"
 
 
 def main():
@@ -66,32 +76,74 @@ def main():
         fp = save_result(STEP, "firecrawl_interact", interact_r)
         print(f"  [saved to {fp}]")
 
-    # All competitors
-    for name in ["Spider", "Crawl4AI", "ScrapeGraphAI", "Apify", "Exa"]:
+    # --- Spider (browser endpoint / actions on scrape) ---
+    print_competitor_header("Spider")
+    spider_actions = [{"type": "click", "selector": "button:has-text('Annual'), label:has-text('Annual')"}]
+    spider_r = timed_call(spider_runner.browser_interact, INTERACT_TARGET_URL, spider_actions)
+    if spider_r["error"]:
+        print(f"  ERROR: {spider_r['error']}")
+    else:
+        print(f"  Latency: {spider_r['latency_s']}s")
+        print(f"  Output (first 500 chars):\n{excerpt(spider_r['result'])}")
+    fp = save_result(STEP, "spider", spider_r)
+    print(f"  [saved to {fp}]")
+
+    # --- Crawl4AI (browser interactions via js_code DSL) ---
+    print_competitor_header("Crawl4AI")
+    print("  Using js_code parameter to click annual toggle")
+    c4_r = timed_call(crawl4ai_runner.interact, INTERACT_TARGET_URL, TOGGLE_JS, WAIT_FOR_SELECTOR)
+    if c4_r["error"]:
+        print(f"  ERROR: {c4_r['error']}")
+    else:
+        print(f"  Latency: {c4_r['latency_s']}s")
+        print(f"  Output (first 500 chars):\n{excerpt(c4_r['result'])}")
+    fp = save_result(STEP, "crawl4ai", c4_r)
+    print(f"  [saved to {fp}]")
+
+    # No-equivalent competitors
+    for name in ["ScrapeGraphAI", "Apify", "Exa"]:
         print_competitor_header(name)
         print("  No browser interaction primitive — N/A")
 
     competitors = ["Firecrawl", "Spider", "Crawl4AI", "ScrapeGraphAI", "Apify", "Exa"]
+    def lat(r):
+        return f"{r['latency_s']}s" if r and not r.get("error") else ("ERROR" if r and r.get("error") else "N/A")
     rows = [
         ("Endpoint used", {
             "Firecrawl": "/scrape + /interact",
-            **{c: "N/A" for c in competitors[1:]},
+            "Spider": "browser actions on /v1/scrape",
+            "Crawl4AI": "js_code on CrawlerRunConfig",
+            "ScrapeGraphAI": "N/A", "Apify": "N/A", "Exa": "N/A",
+        }),
+        ("Interface style", {
+            "Firecrawl": "natural-language prompt",
+            "Spider": "actions array (selectors)",
+            "Crawl4AI": "JavaScript DSL",
+            "ScrapeGraphAI": "N/A", "Apify": "N/A", "Exa": "N/A",
         }),
         ("Has equivalent?", {
-            "Firecrawl": "Yes",
-            **{c: "No" for c in competitors[1:]},
+            "Firecrawl": "Yes", "Spider": "Yes", "Crawl4AI": "Yes",
+            "ScrapeGraphAI": "No", "Apify": "No", "Exa": "No",
         }),
-        ("Output quality (1-5)", {"Firecrawl": "___", **{c: "N/A" for c in competitors[1:]}}),
-        ("Scrape latency", {
-            "Firecrawl": f"{scrape_r['latency_s']}s" if not scrape_r.get("error") else "ERROR",
-            **{c: "N/A" for c in competitors[1:]},
+        ("Output quality (1-5)", {
+            "Firecrawl": "___", "Spider": "___", "Crawl4AI": "___",
+            "ScrapeGraphAI": "N/A", "Apify": "N/A", "Exa": "N/A",
         }),
-        ("Interact latency", {
-            "Firecrawl": "(see raw output — only available if scrape_id found)",
-            **{c: "N/A" for c in competitors[1:]},
+        ("Latency", {
+            "Firecrawl": f"{scrape_r['latency_s']}s scrape" if not scrape_r.get("error") else "ERROR",
+            "Spider": lat(spider_r),
+            "Crawl4AI": lat(c4_r),
+            "ScrapeGraphAI": "N/A", "Apify": "N/A", "Exa": "N/A",
         }),
-        ("Toggle detected?", {"Firecrawl": "___", **{c: "N/A" for c in competitors[1:]}}),
-        ("Cost", {"Firecrawl": "2 credits (scrape + interact)", **{c: "N/A" for c in competitors[1:]}}),
+        ("Toggle detected?", {
+            "Firecrawl": "___", "Spider": "___", "Crawl4AI": "___",
+            "ScrapeGraphAI": "N/A", "Apify": "N/A", "Exa": "N/A",
+        }),
+        ("Cost", {
+            "Firecrawl": "2 credits (scrape + interact)",
+            "Spider": "not reported", "Crawl4AI": "free",
+            "ScrapeGraphAI": "N/A", "Apify": "N/A", "Exa": "N/A",
+        }),
         ("Failure behavior", {c: "N/A" for c in competitors}),
         ("Notes", {c: "" for c in competitors}),
     ]

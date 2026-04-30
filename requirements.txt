@@ -6,3 +6,4 @@ crawl4ai
 scrapegraphai
 requests
 python-dotenv
+pypdf

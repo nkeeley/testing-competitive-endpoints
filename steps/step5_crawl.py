@@ -11,6 +11,7 @@ import runners.firecrawl_runner as fc_runner
 import runners.spider_runner as spider_runner
 import runners.crawl4ai_runner as crawl4ai_runner
 import runners.apify_runner as apify_runner
+import runners.scrapegraphai_runner as sgai_runner
 from utils import timed_call, save_result, excerpt, credits_used, print_step_header, print_competitor_header, print_comparison_table
 from config import PRIMARY_DOCS_URL
 
@@ -119,10 +120,25 @@ def main():
         print(f"  Sample (first 500 chars of page 1):\n{excerpt(sample_markdown(r['result']))}")
     fp = save_result(STEP, "apify", r)
     print(f"  [saved to {fp}]")
+    time.sleep(2)
+
+    # --- ScrapeGraphAI (smartcrawler) ---
+    print_competitor_header("ScrapeGraphAI")
+    r = timed_call(sgai_runner.crawl, TARGET_URL, "Extract all docs page content as markdown", CRAWL_LIMIT)
+    data["scrapegraphai"] = r
+    if r["error"]:
+        print(f"  ERROR: {r['error']}")
+    else:
+        count = page_count(r["result"])
+        print(f"  Latency: {r['latency_s']}s")
+        print(f"  Cost: not reported in response")
+        print(f"  Pages returned: {count}")
+        print(f"  Sample (first 500 chars of page 1):\n{excerpt(sample_markdown(r['result']))}")
+    fp = save_result(STEP, "scrapegraphai", r)
+    print(f"  [saved to {fp}]")
 
     # --- No-equivalent competitors ---
     for name, note in [
-        ("ScrapeGraphAI", "No crawl primitive — single-page extraction only"),
         ("Exa", "No crawl primitive"),
     ]:
         print_competitor_header(name)
@@ -141,32 +157,32 @@ def main():
             "Firecrawl": "/crawl",
             "Spider": "crawl_url()",
             "Crawl4AI": "AsyncWebCrawler (sequential)",
-            "ScrapeGraphAI": "N/A",
+            "ScrapeGraphAI": "/smartcrawler",
             "Apify": "website-content-crawler",
             "Exa": "N/A",
         }),
         ("Has equivalent?", {
             "Firecrawl": "Yes", "Spider": "Yes", "Crawl4AI": "Yes (manual link-follow)",
-            "ScrapeGraphAI": "No", "Apify": "Yes (via actor)", "Exa": "No",
+            "ScrapeGraphAI": "Yes", "Apify": "Yes (via actor)", "Exa": "No",
         }),
         ("Output quality (1-5)", {
             "Firecrawl": "___", "Spider": "___", "Crawl4AI": "___",
-            "ScrapeGraphAI": "N/A", "Apify": "___", "Exa": "N/A",
+            "ScrapeGraphAI": "___", "Apify": "___", "Exa": "N/A",
         }),
         ("Latency", {
             "Firecrawl": lat("firecrawl"), "Spider": lat("spider"),
-            "Crawl4AI": lat("crawl4ai"), "ScrapeGraphAI": "N/A",
+            "Crawl4AI": lat("crawl4ai"), "ScrapeGraphAI": lat("scrapegraphai"),
             "Apify": lat("apify"), "Exa": "N/A",
         }),
         ("Pages returned", {
             "Firecrawl": pages("firecrawl"), "Spider": pages("spider"),
-            "Crawl4AI": pages("crawl4ai"), "ScrapeGraphAI": "N/A",
+            "Crawl4AI": pages("crawl4ai"), "ScrapeGraphAI": pages("scrapegraphai"),
             "Apify": pages("apify"), "Exa": "N/A",
         }),
         ("Cost", {
             "Firecrawl": str(credits_used(data.get("firecrawl", {}).get("result"))) + " credit(s)",
             "Spider": "not reported", "Crawl4AI": "free",
-            "ScrapeGraphAI": "N/A", "Apify": "not reported", "Exa": "N/A",
+            "ScrapeGraphAI": "not reported", "Apify": "not reported", "Exa": "N/A",
         }),
         ("Failure behavior", {c: "N/A" for c in competitors}),
         ("Notes", {c: "" for c in competitors}),

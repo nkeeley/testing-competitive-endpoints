@@ -14,6 +14,8 @@ import requests
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import runners.firecrawl_runner as fc_runner
+import runners.spider_runner as spider_runner
+import runners.crawl4ai_runner as crawl4ai_runner
 from utils import timed_call, save_result, excerpt, print_step_header, print_competitor_header, print_comparison_table
 from schemas import PARSE_SCHEMA
 from config import PDF_CANDIDATES
@@ -91,12 +93,39 @@ def main():
     fp = save_result(STEP, "firecrawl_parse_json", r_json)
     print(f"  [saved to {fp}]")
 
-    # Competitors
+    # --- Spider (transform endpoint) ---
+    # Spider's transform takes a content string, not a file upload, so we read the
+    # PDF as bytes and pass it through. Comparison is structurally awkward.
     print_competitor_header("Spider")
-    print("  No file upload / parse primitive — N/A")
+    print("  Note: Spider's /v1/transform takes content (not file upload). Reading PDF text first.")
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(pdf_path)
+        pdf_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        spider_r = timed_call(spider_runner.transform, pdf_text, "markdown")
+    except ImportError:
+        spider_r = {"result": None, "latency_s": 0, "error": "pypdf not installed — pip install pypdf"}
+    if spider_r["error"]:
+        print(f"  ERROR: {spider_r['error']}")
+    else:
+        print(f"  Latency: {spider_r['latency_s']}s")
+        print(f"  Output (first 500 chars):\n{excerpt(spider_r['result'])}")
+    fp = save_result(STEP, "spider", spider_r)
+    print(f"  [saved to {fp}]")
 
+    # --- Crawl4AI (PDF parsing) ---
     print_competitor_header("Crawl4AI")
-    print("  No file upload / parse primitive — N/A")
+    print(f"  Passing local PDF to AsyncWebCrawler via file:// URL")
+    c4_r = timed_call(crawl4ai_runner.parse_pdf, pdf_path)
+    if c4_r["error"]:
+        print(f"  ERROR: {c4_r['error']}")
+    else:
+        print(f"  Latency: {c4_r['latency_s']}s")
+        result = c4_r["result"]
+        md = result.get("markdown") if isinstance(result, dict) else None
+        print(f"  Output (first 500 chars):\n{excerpt(md)}")
+    fp = save_result(STEP, "crawl4ai", c4_r)
+    print(f"  [saved to {fp}]")
 
     print_competitor_header("ScrapeGraphAI")
     print("  Partial: can extract from URLs, but no local file upload endpoint.")
@@ -116,29 +145,43 @@ def main():
     rows = [
         ("Endpoint used", {
             "Firecrawl": "/parse (multipart/form-data)",
-            "Spider": "N/A", "Crawl4AI": "N/A",
+            "Spider": "/v1/transform (content, not file)",
+            "Crawl4AI": "AsyncWebCrawler with file:// URL",
             "ScrapeGraphAI": "N/A (URL-only)",
             "Apify": "N/A (actor required)",
             "Exa": "N/A",
         }),
         ("Has equivalent?", {
             "Firecrawl": "Yes",
-            "Spider": "No", "Crawl4AI": "No",
+            "Spider": "Partial (content-based, not file-upload)",
+            "Crawl4AI": "Partial (file:// hack)",
             "ScrapeGraphAI": "Partial (URL only)",
             "Apify": "Partial (actor required)",
             "Exa": "No",
         }),
         ("PDF source", {
             "Firecrawl": f"{pdf_name} ({pdf_url})" if pdf_name else "N/A",
-            **{c: "N/A" for c in competitors[1:]},
+            "Spider": "same PDF (text extracted via pypdf)",
+            "Crawl4AI": "same PDF (file:// URL)",
+            "ScrapeGraphAI": "N/A", "Apify": "N/A", "Exa": "N/A",
         }),
-        ("Markdown quality (1-5)", {"Firecrawl": "___", **{c: "N/A" for c in competitors[1:]}}),
+        ("Markdown quality (1-5)", {
+            "Firecrawl": "___", "Spider": "___", "Crawl4AI": "___",
+            "ScrapeGraphAI": "N/A", "Apify": "N/A", "Exa": "N/A",
+        }),
         ("JSON schema quality (1-5)", {"Firecrawl": "___", **{c: "N/A" for c in competitors[1:]}}),
-        ("Latency (markdown)", {"Firecrawl": lat(r_md), **{c: "N/A" for c in competitors[1:]}}),
+        ("Latency (markdown)", {
+            "Firecrawl": lat(r_md),
+            "Spider": lat(spider_r),
+            "Crawl4AI": lat(c4_r),
+            "ScrapeGraphAI": "N/A", "Apify": "N/A", "Exa": "N/A",
+        }),
         ("Latency (JSON schema)", {"Firecrawl": lat(r_json), **{c: "N/A" for c in competitors[1:]}}),
         ("Content-Type", {
             "Firecrawl": "multipart/form-data (different from all other FC endpoints)",
-            **{c: "N/A" for c in competitors[1:]},
+            "Spider": "application/json (content as string)",
+            "Crawl4AI": "Python lib, no HTTP",
+            "ScrapeGraphAI": "N/A", "Apify": "N/A", "Exa": "N/A",
         }),
         ("Failure behavior", {c: "N/A" for c in competitors}),
         ("Notes", {c: "" for c in competitors}),
